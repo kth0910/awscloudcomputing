@@ -26,7 +26,7 @@ from app.services.secret_service import get_secret_service
 logger = logging.getLogger(__name__)
 
 # Gemini 모델명
-_GEMINI_MODEL = "gemini-2.0-flash"
+_GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
 
 
 class AIReasoningService:
