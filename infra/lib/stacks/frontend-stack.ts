@@ -27,6 +27,8 @@ export class FrontendStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
+    const albDnsName = cdk.Fn.importValue('ChaosTwin-AlbDnsName');
+
     // ============================================================
     // S3 버킷: Next.js 정적 자산 저장소
     // ============================================================
@@ -79,6 +81,27 @@ export class FrontendStack extends cdk.Stack {
               allowedMethods: cloudfront.CloudFrontAllowedMethods.GET_HEAD,
               // 캐시 최적화를 위해 압축 활성화
               compress: true,
+              viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+            },
+          ],
+        },
+        {
+          customOriginSource: {
+            domainName: albDnsName,
+            originProtocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY,
+            httpPort: 80,
+          },
+          behaviors: [
+            {
+              pathPattern: '/api/*',
+              allowedMethods: cloudfront.CloudFrontAllowedMethods.ALL,
+              forwardedValues: {
+                queryString: true,
+                headers: ['Authorization', 'Content-Type'],
+              },
+              defaultTtl: cdk.Duration.seconds(0),
+              maxTtl: cdk.Duration.seconds(0),
+              minTtl: cdk.Duration.seconds(0),
               viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
             },
           ],

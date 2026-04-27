@@ -48,6 +48,7 @@ class ChaosService:
         target_resource: str,
         fault_type: str,
         duration_seconds: int = 300,
+        cross_account_role_arn: str = "",
     ) -> str:
         """
         Chaos Injector Lambda를 비동기(Event)로 호출한다.
@@ -85,6 +86,7 @@ class ChaosService:
             "duration_seconds": duration_seconds,
             "callback_url": callback_url,
             "invocation_id": invocation_id,
+            "cross_account_role_arn": cross_account_role_arn,
         }
 
         try:
@@ -115,7 +117,9 @@ class ChaosService:
     # ============================================================
     # 콜백 처리 (결과 저장 + AI 추론 트리거)
     # ============================================================
-    async def handle_callback(self, callback: ChaosCallback) -> None:
+    async def handle_callback(
+        self, callback: ChaosCallback, trigger_ai: bool = True
+    ) -> None:
         """
         Lambda 콜백을 처리한다.
 
@@ -144,8 +148,17 @@ class ChaosService:
             f"experiment_id={callback.experiment_id}, status={callback.status}"
         )
 
-        # 2. AI 추론 트리거 (성공 콜백인 경우에만)
-        if callback.status == "success":
+        # 2. 콜백 단계별 CloudWatch 리소스 메트릭 수집
+        await experiment_service.collect_callback_metrics(
+            experiment_id=callback.experiment_id,
+            status=callback.status,
+            target_resource=callback.target_resource,
+            chaos_started_at=callback.started_at,
+            chaos_ended_at=callback.ended_at,
+        )
+
+        # 3. AI 추론 트리거 (성공 콜백인 경우에만)
+        if trigger_ai and callback.status == "success":
             try:
                 await self._trigger_ai_reasoning(callback)
             except Exception as e:

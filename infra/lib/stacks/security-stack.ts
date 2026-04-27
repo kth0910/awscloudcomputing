@@ -1,4 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
+import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
@@ -30,6 +31,11 @@ export class SecurityStack extends cdk.Stack {
   public readonly chaosEngineEc2Role: iam.Role;
   public readonly chaosInjectorLambdaRole: iam.Role;
   public readonly dashboardCloudFrontRole: iam.Role;
+
+  // Cognito
+  public readonly userPool: cognito.UserPool;
+  public readonly userPoolClient: cognito.UserPoolClient;
+  public readonly userPoolDomain: cognito.UserPoolDomain;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -170,6 +176,14 @@ export class SecurityStack extends cdk.Stack {
       cidrIp: '0.0.0.0/0',
     });
 
+    new ec2.CfnSecurityGroupEgress(this, 'LambdaEgressHttp', {
+      groupId: this.lambdaSecurityGroup.attrGroupId,
+      ipProtocol: 'tcp',
+      fromPort: 80,
+      toPort: 80,
+      cidrIp: '0.0.0.0/0',
+    });
+
     new ec2.CfnSecurityGroupEgress(this, 'LambdaEgressToEc2', {
       groupId: this.lambdaSecurityGroup.attrGroupId,
       ipProtocol: 'tcp',
@@ -218,6 +232,13 @@ export class SecurityStack extends cdk.Stack {
       resources: ['*'],
     }));
 
+    this.chaosEngineEc2Role.addToPolicy(new iam.PolicyStatement({
+      sid: 'AllowStsAssumeRole',
+      effect: iam.Effect.ALLOW,
+      actions: ['sts:AssumeRole'],
+      resources: ['arn:aws:iam::*:role/ChaosTwin-*'],
+    }));
+
     // ChaosInjectorLambdaRole: Lambda Chaos Injector에 연결
     // 권한: EC2 인스턴스 제어, Security Group 수정, CloudWatch 로그 기록
     this.chaosInjectorLambdaRole = new iam.Role(this, 'ChaosInjectorLambdaRole', {
@@ -262,6 +283,15 @@ export class SecurityStack extends cdk.Stack {
       resources: ['*'],
     }));
 
+    // STS AssumeRole 권한 — Cross-Account 장애 주입용
+    // ChaosTwin- 접두사 명명 규칙을 강제하여 임의 Role 위임 방지
+    this.chaosInjectorLambdaRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'AllowStsAssumeRole',
+      effect: iam.Effect.ALLOW,
+      actions: ['sts:AssumeRole'],
+      resources: ['arn:aws:iam::*:role/ChaosTwin-*'],
+    }));
+
     // DashboardCloudFrontRole: CloudFront OAI에 연결
     // 권한: S3:GetObject (대시보드 버킷만)
     this.dashboardCloudFrontRole = new iam.Role(this, 'DashboardCloudFrontRole', {
@@ -279,8 +309,73 @@ export class SecurityStack extends cdk.Stack {
     }));
 
     // ============================================================
+    // Cognito User Pool
+    // ============================================================
+
+    this.userPool = new cognito.UserPool(this, 'ChaosTwinUserPool', {
+      userPoolName: 'ChaosTwin-UserPool',
+      selfSignUpEnabled: true,
+      signInAliases: { email: true },
+      autoVerify: { email: true },
+      passwordPolicy: {
+        minLength: 8,
+        requireUppercase: true,
+        requireLowercase: true,
+        requireDigits: true,
+        requireSymbols: true,
+      },
+      accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // App Client — no client secret (SPA / public client)
+    this.userPoolClient = this.userPool.addClient('ChaosTwinAppClient', {
+      userPoolClientName: 'ChaosTwin-AppClient',
+      generateSecret: false,
+      authFlows: {
+        adminUserPassword: true,
+        userSrp: true,
+        userPassword: true,
+      },
+      oAuth: {
+        flows: { authorizationCodeGrant: true },
+        scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
+        callbackUrls: ['http://localhost:3000/'],
+        logoutUrls: ['http://localhost:3000/'],
+      },
+    });
+
+    // Cognito Domain (prefix-based)
+    this.userPoolDomain = this.userPool.addDomain('ChaosTwinDomain', {
+      cognitoDomain: {
+        domainPrefix: `chaos-twin-${cdk.Aws.ACCOUNT_ID}`,
+      },
+    });
+
+    // ============================================================
     // CloudFormation 출력값 (다른 스택에서 참조용)
     // ============================================================
+
+    // Cognito outputs
+    new cdk.CfnOutput(this, 'CognitoUserPoolId', {
+      value: this.userPool.userPoolId,
+      description: 'Cognito User Pool ID',
+      exportName: 'ChaosTwin-CognitoUserPoolId',
+    });
+
+    new cdk.CfnOutput(this, 'CognitoAppClientId', {
+      value: this.userPoolClient.userPoolClientId,
+      description: 'Cognito App Client ID',
+      exportName: 'ChaosTwin-CognitoAppClientId',
+    });
+
+    new cdk.CfnOutput(this, 'CognitoDomain', {
+      value: this.userPoolDomain.domainName,
+      description: 'Cognito Domain',
+      exportName: 'ChaosTwin-CognitoDomain',
+    });
+
+    // Security Group outputs
     new cdk.CfnOutput(this, 'AlbSecurityGroupId', {
       value: this.albSecurityGroup.attrGroupId,
       description: 'ALB Security Group ID',

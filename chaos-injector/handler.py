@@ -14,6 +14,7 @@ from rollback import RollbackManager
 from scenarios.ec2_stop import EC2StopScenario
 from scenarios.rds_delay import RDSDelayScenario
 from scenarios.sg_modify import SGModifyScenario
+from sts_manager import STSCredentialManager
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -80,6 +81,7 @@ def handler(event: dict, context) -> dict:
     duration_seconds = event.get("duration_seconds", 300)
     callback_url = event.get("callback_url", "")
     rollback_config = event.get("rollback_config", {})
+    cross_account_role_arn = event.get("cross_account_role_arn") or ""
 
     started_at = datetime.now(timezone.utc)
 
@@ -100,11 +102,56 @@ def handler(event: dict, context) -> dict:
             "body": json.dumps(validation_error, ensure_ascii=False),
         }
 
-    # 2. 시나리오 인스턴스 생성
-    scenario_class = SCENARIO_MAP[fault_type]
-    scenario = scenario_class()
+    # 2. Cross-Account 자격 증명 처리
+    sts_manager = None
+    credentials = None
+    if cross_account_role_arn:
+        try:
+            sts_manager = STSCredentialManager()
+            session_name = f"ChaosTwin-{experiment_id}"
+            credentials = sts_manager.assume_role(
+                role_arn=cross_account_role_arn,
+                session_name=session_name,
+                duration_seconds=duration_seconds,
+            )
+            logger.info("Cross-Account AssumeRole 성공: %s", cross_account_role_arn)
+        except Exception as e:
+            logger.error("Cross-Account AssumeRole 실패: %s", str(e))
+            error_payload = build_error_callback_payload(
+                experiment_id=experiment_id,
+                target_resource=target_resource,
+                fault_type=fault_type,
+                error=e,
+                started_at=started_at,
+            )
+            send_callback(callback_url=callback_url, **error_payload)
+            return {
+                "statusCode": 500,
+                "body": json.dumps(
+                    {"error": str(e), "experiment_id": experiment_id},
+                    ensure_ascii=False,
+                ),
+            }
 
-    # 3. RollbackManager를 통해 장애 주입 + 자동 롤백 실행
+    # 3. 시나리오 인스턴스 생성 (Cross-Account 클라이언트 주입)
+    scenario_class = SCENARIO_MAP[fault_type]
+    if credentials and sts_manager:
+        if fault_type == "ec2_stop":
+            ec2_client = sts_manager.create_client("ec2", credentials)
+            scenario = scenario_class(ec2_client=ec2_client)
+        elif fault_type == "sg_port_block":
+            ec2_client = sts_manager.create_client("ec2", credentials)
+            scenario = scenario_class(ec2_client=ec2_client)
+        elif fault_type == "rds_delay":
+            ec2_client = sts_manager.create_client("ec2", credentials)
+            rds_client = sts_manager.create_client("rds", credentials)
+            scenario = scenario_class(ec2_client=ec2_client, rds_client=rds_client)
+        else:
+            scenario = scenario_class()
+    else:
+        scenario = scenario_class()
+
+    # 4. RollbackManager를 통해 장애 주입 + 자동 롤백 실행
     rollback_manager = RollbackManager(
         scenario=scenario,
         experiment_id=experiment_id,
@@ -113,6 +160,8 @@ def handler(event: dict, context) -> dict:
         duration_seconds=duration_seconds,
         callback_url=callback_url,
         config=rollback_config,
+        sts_manager=sts_manager,
+        role_arn=cross_account_role_arn,
     )
 
     try:

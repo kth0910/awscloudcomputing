@@ -7,7 +7,7 @@
 export type FaultType = 'ec2_stop' | 'sg_port_block' | 'rds_delay';
 
 /** 실험 상태 */
-export type ExperimentStatus = 'created' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type ExperimentStatus = 'created' | 'running' | 'completed' | 'failed' | 'cancelled' | 'probe_failed';
 
 /** 페르소나 유형 */
 export type PersonaType = 'impatient' | 'meticulous' | 'casual';
@@ -116,6 +116,23 @@ export interface Persona {
   expected_response_time: string;
 }
 
+/** 사용자 프로필 응답 */
+export interface UserProfile {
+  cognito_sub: string;
+  email: string;
+  aws_account_id: string | null;
+  cross_account_role_arn: string | null;
+  role_verified: boolean;
+  probe_endpoint: string | null;
+}
+
+/** 프로필 등록/수정 요청 */
+export interface ProfileUpdate {
+  aws_account_id: string;
+  cross_account_role_arn: string;
+  probe_endpoint?: string;
+}
+
 // ============================================================
 // 유틸리티
 // ============================================================
@@ -134,6 +151,7 @@ export const STATUS_LABELS: Record<ExperimentStatus, string> = {
   completed: '완료',
   failed: '실패',
   cancelled: '취소됨',
+  probe_failed: '프로빙 실패',
 };
 
 /** 페르소나 유형 한국어 라벨 */

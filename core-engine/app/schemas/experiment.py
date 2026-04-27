@@ -175,8 +175,8 @@ class ExperimentResponse(BaseModel):
     # 장애 유형: ec2_stop, sg_port_block, rds_delay
     fault_type: Literal["ec2_stop", "sg_port_block", "rds_delay"]
 
-    # 실험 상태: created, running, completed, failed, cancelled
-    status: Literal["created", "running", "completed", "failed", "cancelled"]
+    # 실험 상태: created, running, completed, failed, cancelled, probe_failed
+    status: Literal["created", "running", "completed", "failed", "cancelled", "probe_failed"]
 
     # 장애 지속 시간 (초)
     duration_seconds: int

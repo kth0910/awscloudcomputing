@@ -31,6 +31,8 @@ class RollbackManager:
         duration_seconds: int = 300,
         callback_url: str = "",
         config: dict | None = None,
+        sts_manager=None,
+        role_arn: str = "",
     ):
         """
         Parameters:
@@ -41,6 +43,8 @@ class RollbackManager:
             duration_seconds: 장애 지속 시간 (초)
             callback_url: Core Engine 콜백 URL
             config: 시나리오 추가 설정
+            sts_manager: STSCredentialManager 인스턴스 (Cross-Account 시)
+            role_arn: Cross-Account Role ARN (자격 증명 갱신용)
         """
         self._scenario = scenario
         self._experiment_id = experiment_id
@@ -49,6 +53,8 @@ class RollbackManager:
         self._duration_seconds = duration_seconds
         self._callback_url = callback_url
         self._config = config or {}
+        self._sts_manager = sts_manager
+        self._role_arn = role_arn
 
     def execute(self) -> dict:
         """
@@ -94,13 +100,13 @@ class RollbackManager:
             )
             time.sleep(self._duration_seconds)
 
-            # 3단계: 자동 롤백
+            # 3단계: 자동 롤백 (자격 증명 만료 시 갱신)
             logger.info(
                 "자동 롤백 시작: experiment=%s, target=%s",
                 self._experiment_id,
                 self._target_resource,
             )
-            self._scenario.rollback(self._target_resource, original_state)
+            self._rollback_with_credential_renewal(original_state)
             rollback_ended_at = datetime.now(timezone.utc)
             logger.info("자동 롤백 완료: experiment=%s", self._experiment_id)
 
@@ -138,7 +144,7 @@ class RollbackManager:
             if original_state:
                 try:
                     logger.info("예외 후 긴급 롤백 시도: experiment=%s", self._experiment_id)
-                    self._scenario.rollback(self._target_resource, original_state)
+                    self._rollback_with_credential_renewal(original_state)
                     logger.info("긴급 롤백 완료: experiment=%s", self._experiment_id)
                 except Exception as rollback_error:
                     logger.error(
@@ -159,3 +165,44 @@ class RollbackManager:
 
             # 예외를 다시 발생시켜 handler에서 처리
             raise
+
+    def _rollback_with_credential_renewal(self, original_state: dict) -> None:
+        """
+        롤백을 수행한다. 자격 증명 만료 시 갱신 후 재시도한다.
+
+        Cross-Account 실행이 아닌 경우 일반 롤백을 수행한다.
+        """
+        try:
+            self._scenario.rollback(self._target_resource, original_state)
+        except Exception as e:
+            # ExpiredTokenException 감지 시 자격 증명 갱신 후 재시도
+            error_str = str(e)
+            if (
+                self._sts_manager
+                and self._role_arn
+                and "ExpiredToken" in error_str
+            ):
+                logger.warning(
+                    "롤백 중 자격 증명 만료 감지. 갱신 후 재시도: experiment=%s",
+                    self._experiment_id,
+                )
+                session_name = f"ChaosTwin-{self._experiment_id}-rollback"
+                new_credentials = self._sts_manager.assume_role(
+                    role_arn=self._role_arn,
+                    session_name=session_name,
+                    duration_seconds=300,
+                )
+                # 시나리오에 새 클라이언트 주입
+                self._reinject_clients(new_credentials)
+                # 롤백 재시도
+                self._scenario.rollback(self._target_resource, original_state)
+                logger.info("자격 증명 갱신 후 롤백 성공: experiment=%s", self._experiment_id)
+            else:
+                raise
+
+    def _reinject_clients(self, credentials: dict) -> None:
+        """갱신된 자격 증명으로 시나리오의 boto3 클라이언트를 교체한다."""
+        if hasattr(self._scenario, "_ec2"):
+            self._scenario._ec2 = self._sts_manager.create_client("ec2", credentials)
+        if hasattr(self._scenario, "_rds"):
+            self._scenario._rds = self._sts_manager.create_client("rds", credentials)

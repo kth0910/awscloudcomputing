@@ -15,6 +15,7 @@ from app.schemas.experiment import (
     RunConfig,
 )
 from app.schemas.persona import PersonaInferenceResponse
+from app.schemas.profile import ProfileResponse, ProfileUpdate
 
 __all__ = [
     "ExperimentCreate",
@@ -25,4 +26,6 @@ __all__ = [
     "ExperimentDetail",
     "PersonaInferenceResponse",
     "ChaosCallback",
+    "ProfileUpdate",
+    "ProfileResponse",
 ]

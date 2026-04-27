@@ -47,20 +47,9 @@ export class ComputeStack extends cdk.Stack {
     // SecretsStack 참조
     const geminiApiKeySecretArn = cdk.Fn.importValue('ChaosTwin-GeminiApiKeySecretArn');
 
-    // ============================================================
-    // FastAPI EC2 인스턴스 생성 (커스텀 Construct 사용)
-    // - t2.micro, Private Subnet A, Docker + FastAPI 자동 배포
-    // ============================================================
-    const fastApiEc2 = new FastApiEc2(this, 'FastApiEc2', {
-      subnetId: privateSubnetAId,
-      securityGroupId: ec2SecurityGroupId,
-      ec2RoleArn,
-      rdsEndpoint,
-      rdsPort,
-      rdsSecretArn,
-      rdsDbName,
-      geminiApiKeySecretArn,
-    });
+    // Cognito / Lambda 참조
+    const cognitoUserPoolId = cdk.Fn.importValue('ChaosTwin-CognitoUserPoolId');
+    const chaosInjectorLambdaRoleArn = cdk.Fn.importValue('ChaosTwin-ChaosInjectorLambdaRoleArn');
 
     // ============================================================
     // Application Load Balancer (ALB) 생성
@@ -75,6 +64,26 @@ export class ComputeStack extends cdk.Stack {
       securityGroups: [albSecurityGroupId],
       subnets: [publicSubnetAId, publicSubnetBId],
       tags: [{ key: 'Name', value: 'chaos-twin-alb' }],
+    });
+
+    // ============================================================
+    // FastAPI EC2 인스턴스 생성 (커스텀 Construct 사용)
+    // - t2.micro, Private Subnet A, Docker + FastAPI 자동 배포
+    // ============================================================
+    const fastApiEc2 = new FastApiEc2(this, 'FastApiEc2', {
+      subnetId: privateSubnetAId,
+      securityGroupId: ec2SecurityGroupId,
+      ec2RoleArn,
+      rdsEndpoint,
+      rdsPort,
+      rdsSecretArn,
+      rdsDbName,
+      geminiApiKeySecretArn,
+      cognitoUserPoolId,
+      cognitoRegion: this.region,
+      chaosLambdaFunctionName: 'chaos-twin-chaos-injector',
+      callbackBaseUrl: cdk.Fn.join('', ['http://', alb.attrDnsName]),
+      chaosInjectorLambdaRoleArn,
     });
 
     // ============================================================

@@ -9,10 +9,14 @@ from app.models.experiment import Experiment
 from app.models.experiment_result import ExperimentResult
 from app.models.persona_inference import PersonaInference
 from app.models.resource_metric import ResourceMetric
+from app.models.user_profile import UserProfile
+from app.models.ux_metric import UXMetric
 
 __all__ = [
     "Experiment",
     "ExperimentResult",
     "PersonaInference",
     "ResourceMetric",
+    "UserProfile",
+    "UXMetric",
 ]

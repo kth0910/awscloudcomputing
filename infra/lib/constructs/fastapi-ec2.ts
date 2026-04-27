@@ -24,6 +24,16 @@ export interface FastApiEc2Props {
   readonly rdsDbName: string;
   /** Gemini API Key Secrets Manager ARN */
   readonly geminiApiKeySecretArn: string;
+  /** Cognito User Pool ID */
+  readonly cognitoUserPoolId: string;
+  /** Cognito region */
+  readonly cognitoRegion: string;
+  /** Chaos Injector Lambda function name */
+  readonly chaosLambdaFunctionName: string;
+  /** Callback base URL for Lambda callbacks */
+  readonly callbackBaseUrl: string;
+  /** Chaos Injector Lambda role ARN */
+  readonly chaosInjectorLambdaRoleArn: string;
 }
 
 /**
@@ -123,6 +133,11 @@ export class FastApiEc2 extends Construct {
       `RDS_DB_NAME=${props.rdsDbName}`,
       `GEMINI_API_KEY_SECRET_ARN=${props.geminiApiKeySecretArn}`,
       `AWS_DEFAULT_REGION=${cdk.Aws.REGION}`,
+      `COGNITO_USER_POOL_ID=${props.cognitoUserPoolId}`,
+      `COGNITO_REGION=${props.cognitoRegion}`,
+      `CHAOS_LAMBDA_FUNCTION_NAME=${props.chaosLambdaFunctionName}`,
+      `CALLBACK_BASE_URL=${props.callbackBaseUrl}`,
+      `CHAOS_INJECTOR_LAMBDA_ROLE_ARN=${props.chaosInjectorLambdaRoleArn}`,
       'EOF',
       '',
       '# ============================================================',

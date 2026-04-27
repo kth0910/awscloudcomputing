@@ -3,7 +3,13 @@
 import './globals.css';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
+import { Authenticator, useAuthenticator } from '@aws-amplify/ui-react';
+import '@aws-amplify/ui-react/styles.css';
+import { configureAmplify } from '../lib/auth-config';
+
+// Amplify 초기화
+configureAmplify();
 
 // 사이드바 네비게이션 항목 정의
 const NAV_ITEMS = [
@@ -11,6 +17,7 @@ const NAV_ITEMS = [
   { href: '/experiments', label: '실험 관리', icon: '🧪' },
   { href: '/personas', label: '페르소나', icon: '👤' },
   { href: '/metrics', label: '메트릭', icon: '📈' },
+  { href: '/profile', label: '프로필 설정', icon: '⚙️' },
 ];
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -20,12 +27,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ko">
       <body className="min-h-screen flex">
-        {/* 사이드바 */}
-        <aside
-          className={`${
-            sidebarOpen ? 'w-60' : 'w-16'
-          } bg-gray-900 text-white flex flex-col transition-all duration-200 shrink-0`}
-        >
+        <Authenticator>
+          {({ signOut, user }) => (
+            <>
+              {/* 사이드바 */}
+              <aside
+                className={`${
+                  sidebarOpen ? 'w-60' : 'w-16'
+                } bg-gray-900 text-white flex flex-col transition-all duration-200 shrink-0`}
+              >
           {/* 로고 영역 */}
           <div className="h-14 flex items-center justify-between px-4 border-b border-gray-700">
             {sidebarOpen && (
@@ -82,10 +92,16 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </h1>
             <div className="flex items-center gap-4">
               <span className="text-xs text-gray-400">
-                API: {process.env.NEXT_PUBLIC_API_URL || 'CloudFront Proxy'}
+                {user?.signInDetails?.loginId ?? ''}
               </span>
+              <button
+                onClick={signOut}
+                className="text-xs text-gray-500 hover:text-red-500 transition-colors"
+              >
+                로그아웃
+              </button>
               <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-sm font-bold">
-                O
+                {(user?.signInDetails?.loginId ?? 'U')[0].toUpperCase()}
               </div>
             </div>
           </header>
@@ -93,6 +109,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           {/* 페이지 콘텐츠 */}
           <main className="flex-1 p-6 overflow-auto">{children}</main>
         </div>
+            </>
+          )}
+        </Authenticator>
       </body>
     </html>
   );

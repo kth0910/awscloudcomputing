@@ -46,3 +46,5 @@ pytest.ini
 .pytest_cache/
 
 *.tar.gz
+.kiro/*
+quickstart.md

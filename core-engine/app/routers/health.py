@@ -11,6 +11,7 @@ router = APIRouter(tags=["헬스 체크"])
 
 
 @router.get("/health")
+@router.get("/api/health")
 async def health_check():
     """
     헬스 체크 엔드포인트

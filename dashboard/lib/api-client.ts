@@ -11,15 +11,38 @@ import type {
   Persona,
   ResourceMetric,
   RunConfig,
+  UserProfile,
+  ProfileUpdate,
 } from './types';
+
+import { fetchAuthSession } from 'aws-amplify/auth';
 
 // ALB DNS 엔드포인트 — 상대 경로 사용 (CloudFront에서 /api/* → ALB 프록시)
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
-/** 공통 fetch 래퍼 (에러 처리 포함) */
+/** 현재 세션의 ID 토큰을 가져온다 */
+async function getIdToken(): Promise<string | null> {
+  try {
+    const session = await fetchAuthSession();
+    return session.tokens?.idToken?.toString() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** 공통 fetch 래퍼 (에러 처리 + Bearer JWT 헤더 포함) */
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  const idToken = await getIdToken();
+  if (idToken) {
+    headers['Authorization'] = `Bearer ${idToken}`;
+  }
+
   const res = await fetch(`${API_BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     ...options,
   });
 
@@ -83,5 +106,18 @@ export const apiClient = {
   personas: {
     /** 페르소나 목록 조회 */
     list: () => request<Persona[]>('/api/personas'),
+  },
+
+  // 프로필 API
+  profile: {
+    /** 프로필 조회 */
+    get: () => request<UserProfile>('/api/profile'),
+
+    /** 프로필 등록/수정 */
+    update: (data: ProfileUpdate) =>
+      request<UserProfile>('/api/profile', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
   },
 };

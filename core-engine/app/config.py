@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     # Secrets Manager 시크릿 이름 (런타임 조회용)
     secret_name: str = ""
 
+    # Cognito 설정
+    cognito_user_pool_id: str = ""
+    cognito_region: str = "us-east-1"
+
+    # Chaos Injector Lambda Role ARN (프로빙 안내 메시지용)
+    chaos_injector_lambda_role_arn: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

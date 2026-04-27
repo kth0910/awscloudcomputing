@@ -71,6 +71,11 @@ class Experiment(Base):
     # 실험 종료 시각 (완료 전에는 NULL)
     ended_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
+    # 실험 소유자 (Cognito sub)
+    user_id: Mapped[str] = mapped_column(
+        String(255), nullable=False, default="", server_default=""
+    )
+
     # ============================================================
     # 관계 정의 (1:N)
     # ============================================================
@@ -82,6 +87,9 @@ class Experiment(Base):
     )
     resource_metrics = relationship(
         "ResourceMetric", back_populates="experiment", cascade="all, delete-orphan"
+    )
+    ux_metrics = relationship(
+        "UXMetric", back_populates="experiment", cascade="all, delete-orphan"
     )
 
     # ============================================================

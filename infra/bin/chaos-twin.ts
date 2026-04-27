@@ -56,5 +56,6 @@ lambdaStack.addDependency(networkStack);
 lambdaStack.addDependency(securityStack);
 lambdaStack.addDependency(secretsStack);
 
-// 7. FrontendStack: S3, CloudFront (독립 스택)
+// 7. FrontendStack: S3, CloudFront + API proxy
 const frontendStack = new FrontendStack(app, 'FrontendStack', { env });
+frontendStack.addDependency(computeStack);

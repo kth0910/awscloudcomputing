@@ -11,7 +11,7 @@ resource_metrics 테이블에 phase 구분하여 저장한다.
 
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Literal
 
 import boto3
@@ -38,6 +38,13 @@ RDS_METRICS: list[tuple[str, str, str, str]] = [
 
 # phase 타입 정의
 Phase = Literal["before", "during", "after"]
+
+
+def _to_naive_utc(value: datetime) -> datetime:
+    """DB 저장을 위해 timezone-aware datetime을 naive UTC로 변환한다."""
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 class MetricsService:
@@ -217,7 +224,7 @@ class MetricsService:
                         "metric_name": metric_name,
                         "value": values[latest_idx],
                         "unit": unit,
-                        "timestamp": timestamps[latest_idx],
+                        "timestamp": _to_naive_utc(timestamps[latest_idx]),
                     }
                 )
             else:
@@ -231,7 +238,7 @@ class MetricsService:
                         "metric_name": metric_name,
                         "value": 0.0,
                         "unit": unit,
-                        "timestamp": end_time,
+                        "timestamp": _to_naive_utc(end_time),
                     }
                 )
 
@@ -268,6 +275,10 @@ class MetricsService:
             start_time = end_time - timedelta(
                 minutes=self.DEFAULT_LOOKBACK_MINUTES
             )
+        start_time = _to_naive_utc(start_time)
+        end_time = _to_naive_utc(end_time)
+        if start_time >= end_time:
+            start_time = end_time - timedelta(seconds=self.DEFAULT_PERIOD_SECONDS)
 
         exp_uuid = uuid.UUID(experiment_id)
 
@@ -385,7 +396,11 @@ class MetricsService:
         """
         장애 주입 후(after) 메트릭을 수집한다.
 
-        장애 종료 시각부터 현재까지의 메트릭을 수집하여 저장한다.
+        롤백 직후 최근 구간의 메트릭을 수집하여 저장한다.
+
+        콜백은 롤백 직후 도착하므로 chaos_ended_at부터 현재까지 조회하면
+        CloudWatch 조회 구간이 0초가 될 수 있다. 따라서 after는 현재 시점
+        기준 최근 DEFAULT_LOOKBACK_MINUTES 구간을 스냅샷으로 저장한다.
 
         Args:
             experiment_id: 실험 ID
@@ -399,5 +414,4 @@ class MetricsService:
             experiment_id=experiment_id,
             resource_id=resource_id,
             phase="after",
-            start_time=chaos_ended_at,
         )

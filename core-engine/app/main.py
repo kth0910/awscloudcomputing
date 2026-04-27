@@ -13,9 +13,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from fastapi import Depends
+
 from app.config import get_settings
 from app.exceptions import ExperimentNotFoundError
-from app.routers import experiments, health, internal, metrics, personas, results
+from app.middleware.auth import get_current_user
+from app.routers import experiments, health, internal, metrics, personas, profile, results
 from app.services.secret_service import validate_secrets_on_startup
 
 # 로거 설정
@@ -115,9 +118,14 @@ async def general_error_handler(request: Request, exc: Exception):
 # ============================================================
 # 라우터 등록
 # ============================================================
+# 인증 불필요 라우터
 app.include_router(health.router)
-app.include_router(experiments.router)
-app.include_router(results.router)
-app.include_router(personas.router)
-app.include_router(metrics.router)
 app.include_router(internal.router)
+
+# 인증 필요 라우터 — get_current_user 의존성 적용
+_auth_deps = [Depends(get_current_user)]
+app.include_router(experiments.router, dependencies=_auth_deps)
+app.include_router(results.router, dependencies=_auth_deps)
+app.include_router(personas.router, dependencies=_auth_deps)
+app.include_router(metrics.router, dependencies=_auth_deps)
+app.include_router(profile.router, dependencies=_auth_deps)

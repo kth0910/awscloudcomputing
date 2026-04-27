@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
+from app.middleware.auth import AuthenticatedUser, get_current_user
 from app.schemas.experiment import ResourceMetricResponse
 from app.services.experiment_service import ExperimentService
 
@@ -33,8 +34,11 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> ExperimentService:
 )
 async def get_experiment_metrics(
     experiment_id: str,
+    current_user: AuthenticatedUser = Depends(get_current_user),
     service: ExperimentService = Depends(_get_service),
 ):
     """실험의 리소스 메트릭 목록을 수집 시각 순으로 조회한다."""
-    metrics = await service.get_experiment_metrics(experiment_id)
+    metrics = await service.get_experiment_metrics(
+        experiment_id, user_id=current_user.cognito_sub
+    )
     return metrics
